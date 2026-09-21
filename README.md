@@ -61,7 +61,11 @@ pasted Rumble links.
 - **Real:** every stream, title, channel, avatar, thumbnail, viewer count and the player.
 - **Simulated:** the entire market layer. Tickers, contract addresses and percentage
   moves are derived deterministically from the channel name (`src/lib/markets.ts`).
-  There is no chain, no wallet and no trading. "Connect wallet" and "Trade" are stubs.
+  There is no chain and no contract, so "Trade" stays disabled.
+- **Real:** the wallet connection. `Connect wallet` is a working EIP-1193 client with
+  EIP-6963 multi-wallet discovery, silent reconnect, and live account/chain tracking.
+  It is strictly read-only — RumblePad calls `eth_requestAccounts`, `eth_chainId` and
+  `eth_getBalance`, and never requests a signature or a transaction.
 
 ## Routes
 

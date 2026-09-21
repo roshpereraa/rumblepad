@@ -49,8 +49,9 @@ export default async function MarketsPage() {
         <p className="mt-4 rounded-lg border border-pad-line bg-pad-surface px-4 py-3 text-[12px] leading-relaxed text-pad-muted">
           <span className="font-bold text-pad-text">Heads up:</span> the streams and channels on
           this page are real, pulled live from Rumble. Every ticker, contract address and price
-          move below is generated locally for demonstration — there is no chain, no wallet and no
-          trading behind RumblePad.
+          move below is generated locally for demonstration. Wallet connection is real and
+          read-only; there is no chain or contract behind these pairs, so nothing here can be
+          traded.
         </p>
       </div>
 

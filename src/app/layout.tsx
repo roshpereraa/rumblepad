@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { TopBar } from "@/components/TopBar";
 import { Sidebar } from "@/components/Sidebar";
+import { WalletProvider } from "@/components/wallet/WalletProvider";
 import { getLiveStreams } from "@/lib/rumble";
 
 export const metadata: Metadata = {
@@ -22,11 +23,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className="min-h-screen bg-pad-bg">
-        <TopBar />
-        <div className="flex h-[calc(100vh-3.5rem)]">
-          <Sidebar channels={channels} />
-          <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
-        </div>
+        <WalletProvider>
+          <TopBar />
+          <div className="flex h-[calc(100vh-3.5rem)]">
+            <Sidebar channels={channels} />
+            <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+          </div>
+        </WalletProvider>
       </body>
     </html>
   );

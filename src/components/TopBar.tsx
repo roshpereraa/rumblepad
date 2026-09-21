@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { LogoMark, Wordmark } from "./Logo";
+import { ConnectWallet } from "./wallet/ConnectWallet";
 
 export function TopBar() {
   const router = useRouter();
@@ -74,13 +75,9 @@ export function TopBar() {
         </div>
       </form>
 
-      <button
-        type="button"
-        onClick={() => alert("Wallet connection is not implemented — RumblePad's market layer is a UI demo.")}
-        className="ml-auto shrink-0 rounded-md bg-pad-green px-4 py-2 text-sm font-bold text-pad-on-green transition-colors hover:bg-pad-green-dim md:ml-0"
-      >
-        Connect wallet
-      </button>
+      <div className="ml-auto md:ml-0">
+        <ConnectWallet />
+      </div>
     </header>
   );
 }

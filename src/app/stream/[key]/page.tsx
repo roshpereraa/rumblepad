@@ -4,6 +4,7 @@ import { StreamCard } from "@/components/StreamCard";
 import { formatViewers } from "@/lib/format";
 import { buildMarkets, shortAddress } from "@/lib/markets";
 import { getLiveStreams, getVideo } from "@/lib/rumble";
+import { TradePanel } from "@/components/wallet/TradePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -148,16 +149,7 @@ export default async function StreamPage({ params }: { params: Promise<{ key: st
               </span>
             </div>
 
-            <button
-              type="button"
-              disabled
-              className="mt-3 w-full cursor-not-allowed rounded-md border border-pad-line bg-pad-raised py-2.5 text-[13px] font-bold text-pad-muted"
-            >
-              Trade {market.ticker}
-            </button>
-            <p className="mt-2 text-[11px] leading-relaxed text-pad-muted">
-              Simulated pair. No wallet, no chain, no real trading behind this panel.
-            </p>
+            <TradePanel ticker={market.ticker} />
           </div>
 
           <div className="flex min-h-[320px] flex-1 flex-col rounded-xl border border-pad-line bg-pad-surface">

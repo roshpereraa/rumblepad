@@ -210,7 +210,8 @@ export default async function BrowsePage({
               <h3 className="text-[15px] font-bold">The next move starts on stream</h3>
               <p className="mt-1 text-[13px] leading-relaxed text-pad-muted">
                 Pairs with confirmed trading activity appear here. RumblePad&apos;s market layer is a
-                UI demo — no chain, no wallet, no real trades.
+                UI demo — wallet connection is real, but there is no chain or contract
+                behind these pairs.
               </p>
             </div>
           </div>
