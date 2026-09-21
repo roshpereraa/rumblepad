@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  /* Light shell */
+  --color-pad-bg: #ffffff;
+  --color-pad-surface: #f7f9f6;
+  --color-pad-raised: #eef2ec;
+  --color-pad-line: #dfe5dc;
+
+  /* Ink */
+  --color-pad-text: #0a1628;
+  --color-pad-muted: #5b6b63;
+
+  /* Brand green. `green` is the fill colour; `green-text` is the darker
+     variant used for type and icons so contrast on white stays legible. */
+  --color-pad-green: #85c742;
+  --color-pad-green-dim: #6ba32f;
+  --color-pad-green-text: #3f6f10;
+  --color-pad-on-green: #0a1628;
+
+  --color-pad-green-soft: #e9f4db;
+  --color-pad-live: #c81e45;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  background: var(--color-pad-bg);
+  color: var(--color-pad-text);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-pad-line) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-pad-line);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Visible keyboard focus across the app. */
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-pad-green-text);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes pad-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pad-pulse {
+  animation: pad-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
