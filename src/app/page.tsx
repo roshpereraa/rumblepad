@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SectionHeading, StreamCard, StreamGrid } from "@/components/StreamCard";
 import { formatViewers } from "@/lib/format";
 import { buildMarkets, shortAddress } from "@/lib/markets";
-import { extractKey, getLiveStreams, type Stream } from "@/lib/rumble";
+import { extractKey, getFeed, type Stream } from "@/lib/rumble";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +27,14 @@ export default async function BrowsePage({
   const { q } = await searchParams;
 
   let streams: Stream[] = [];
+  let stale = false;
+  let capturedAt: string | null = null;
   let error: string | null = null;
   try {
-    streams = await getLiveStreams();
+    const feed = await getFeed();
+    streams = feed.streams;
+    stale = feed.stale;
+    capturedAt = feed.capturedAt;
   } catch {
     error = "Couldn't reach Rumble just now. Refresh to try again.";
   }
@@ -61,8 +66,20 @@ export default async function BrowsePage({
   return (
     <div className="px-6 py-6">
       {error && (
-        <div className="mb-6 rounded-lg border border-pad-live/40 bg-pad-live/10 px-4 py-3 text-sm text-pad-text">
+        <div className="mb-6 rounded-lg border border-pad-line bg-pad-surface px-4 py-3 text-sm text-pad-text">
           {error}
+        </div>
+      )}
+
+      {stale && (
+        <div className="mb-6 rounded-lg border border-pad-line bg-pad-surface px-4 py-3 text-[13px] leading-relaxed text-pad-muted">
+          <span className="font-bold text-pad-text">Showing a saved snapshot.</span>{" "}
+          Rumble&apos;s live directory is served to home connections but blocked for
+          datacenter IPs, so this deployment can&apos;t refresh it. These streams were
+          captured
+          {capturedAt ? ` ${new Date(capturedAt).toUTCString()}` : ""} and their viewer
+          counts are frozen — the players themselves still open live. Run RumblePad
+          locally for a live-updating feed.
         </div>
       )}
 

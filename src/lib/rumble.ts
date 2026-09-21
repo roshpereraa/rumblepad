@@ -16,6 +16,8 @@
  * Cloudflare challenge, so neither is used here.
  */
 
+import snapshot from "@/data/live-snapshot.json";
+
 export const RUMBLE_ORIGIN = "https://rumble.com";
 
 const UA =
@@ -218,13 +220,40 @@ export function parseStreams(html: string): Stream[] {
 /* public API                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Where a feed came from.
+ *
+ * Cloudflare serves rumble.com's browse/channel/RSS pages to residential IPs
+ * but challenges datacenter IPs, so live discovery works when RumblePad runs
+ * locally or on a residential host and fails on Vercel. `stale` tells the UI
+ * to say so rather than silently showing an old list.
+ */
+export type Feed = { streams: Stream[]; stale: boolean; capturedAt: string | null };
+
 /** Rumble's global live feed, most-watched first. Cached for 45s. */
+async function scrapeLive(): Promise<Stream[]> {
+  const html = await get(`${RUMBLE_ORIGIN}/browse/live`, "text/html");
+  const streams = parseStreams(html);
+  if (!streams.length) throw new Error("browse/live returned no parsable cards");
+  return streams.sort((a, b) => (b.viewers ?? -1) - (a.viewers ?? -1));
+}
+
+export async function getFeed(): Promise<Feed> {
+  try {
+    return await cached("feed", 45_000, async () => ({
+      streams: await scrapeLive(),
+      stale: false,
+      capturedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // Discovery is blocked from this host - fall back to the committed
+    // snapshot so the app still has something real to show.
+    return { streams: snapshot.streams as Stream[], stale: true, capturedAt: snapshot.capturedAt };
+  }
+}
+
 export async function getLiveStreams(): Promise<Stream[]> {
-  return cached("live", 45_000, async () => {
-    const html = await get(`${RUMBLE_ORIGIN}/browse/live`, "text/html");
-    const streams = parseStreams(html);
-    return streams.sort((a, b) => (b.viewers ?? -1) - (a.viewers ?? -1));
-  });
+  return (await getFeed()).streams;
 }
 
 type OEmbed = {
@@ -236,21 +265,73 @@ type OEmbed = {
   duration?: number;
 };
 
-/** Rumble's official oEmbed endpoint. Works for any public video. */
-export async function getOEmbed(embedOrPageUrl: string): Promise<OEmbed | null> {
-  return cached(`oembed:${embedOrPageUrl}`, 10 * 60_000, async () => {
-    const url = `${RUMBLE_ORIGIN}/api/Media/oembed.json?url=${encodeURIComponent(embedOrPageUrl)}`;
+/**
+ * Rumble's official oEmbed endpoint. Accepts either a video page URL or an
+ * embed URL, and is one of the few endpoints Cloudflare serves to datacenter
+ * IPs - so it is the primary metadata source in production.
+ */
+export async function getOEmbed(pageOrEmbedUrl: string): Promise<OEmbed | null> {
+  return cached(`oembed:${pageOrEmbedUrl}`, 10 * 60_000, async () => {
+    const url = `${RUMBLE_ORIGIN}/api/Media/oembed.json?url=${encodeURIComponent(pageOrEmbedUrl)}`;
     try {
-      return JSON.parse(await get(url, "application/json")) as OEmbed;
+      const body = await get(url, "application/json");
+      return JSON.parse(body) as OEmbed;
     } catch {
       return null;
     }
   });
 }
 
+/** Unescape a JSON string fragment captured by regex. */
+function unescapeJson(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw;
+  }
+}
+
+type EmbedMeta = {
+  title: string | null;
+  channel: string | null;
+  channelUrl: string | null;
+  thumbnail: string | null;
+  live: boolean;
+  id: string | null;
+};
+
 /**
- * Load one video by its slug key ("v7fs46y-some-title"), combining the
- * page HTML (for the embed id and description) with oEmbed metadata.
+ * The embed page carries a JSON blob with the full player config. It is also
+ * reachable from datacenter IPs, so it is our live-status source in production.
+ */
+export async function getEmbedMeta(embedId: string): Promise<EmbedMeta | null> {
+  return cached(`embed:${embedId}`, 60_000, async () => {
+    let html = "";
+    try {
+      html = await get(`${RUMBLE_ORIGIN}/embed/${embedId}/`, "text/html");
+    } catch {
+      return null;
+    }
+    const pick = (re: RegExp) => unescapeJson(re.exec(html)?.[1]);
+    const liveFlag = /"live":(\d)/.exec(html)?.[1];
+    return {
+      title: pick(/"title":"((?:[^"\\]|\\.)*)"/),
+      channel: pick(/"author":\{"name":"((?:[^"\\]|\\.)*)"/),
+      channelUrl: pick(/"author":\{"name":(?:[^"\\]|\\.)*","url":"((?:[^"\\]|\\.)*)"/),
+      thumbnail: pick(/"i":"(https?:\\?\/\\?\/[^"]+)"/),
+      live: (liveFlag ? Number(liveFlag) > 0 : false) || /"meta":\{"live":true/.test(html),
+      id: /"vid":(\d+)/.exec(html)?.[1] ?? null,
+    };
+  });
+}
+
+/**
+ * Load one video by its slug key ("v7fs46y-some-title").
+ *
+ * oEmbed first, because the video page itself is Cloudflare-challenged on
+ * datacenter IPs. oEmbed hands us the embed id inside its iframe markup, and
+ * the embed page fills in live status.
  */
 export async function getVideo(key: string): Promise<VideoDetail | null> {
   const clean = key.replace(/^\//, "").replace(/\.html$/, "");
@@ -258,52 +339,39 @@ export async function getVideo(key: string): Promise<VideoDetail | null> {
 
   return cached(`video:${clean}`, 60_000, async () => {
     const rumbleUrl = `${RUMBLE_ORIGIN}/${clean}.html`;
-    let html = "";
-    try {
-      html = await get(rumbleUrl, "text/html");
-    } catch {
-      return null;
-    }
 
-    const embedId = first(/\/embed\/([a-z0-9]+)\//i, html) ?? null;
-    const oembed = embedId
-      ? await getOEmbed(`${RUMBLE_ORIGIN}/embed/${embedId}/`)
-      : await getOEmbed(rumbleUrl);
+    const oembed = await getOEmbed(rumbleUrl);
+    const embedId =
+      /\/embed\/([a-z0-9]+)\//i.exec(oembed?.html ?? "")?.[1] ?? null;
+    if (!oembed && !embedId) return null;
 
-    const title =
-      decode(first(/<title>([^<]+)<\/title>/, html)) || oembed?.title || "Untitled";
-    const live = /live-video-view-count-status|"isLiveBroadcast"\s*:\s*true/.test(html);
+    const meta = embedId ? await getEmbedMeta(embedId) : null;
 
-    // Viewer counts, avatars and thumbnails are rendered client-side on a video
-    // page, so they aren't in the HTML we get. The live feed does carry them,
-    // so borrow from there whenever this stream is currently listed.
+    // Viewer counts only exist on the live feed, which may be unavailable.
     let fromFeed: Stream | undefined;
     try {
-      fromFeed = (await getLiveStreams()).find((s) => s.key === clean);
+      fromFeed = (await getFeed()).streams.find((s) => s.key === clean);
     } catch {
       fromFeed = undefined;
     }
 
+    const channelUrl = meta?.channelUrl ?? oembed?.author_url ?? "";
+
     return {
-      id: first(/data-video-id="(\d+)"/, html) ?? clean,
+      id: meta?.id ?? clean,
       slug: `/${clean}.html`,
       key: clean,
-      title,
-      channel: oembed?.author_name ?? decode(first(/class="channel__name[^"]*"\s*title="([^"]*)"/, html)) ?? "Unknown",
-      channelPath: (oembed?.author_url ?? "").replace(RUMBLE_ORIGIN, ""),
-      avatar:
-        fromFeed?.avatar ??
-        first(/class="channel__image"[\s\S]{0,200}?src="([^"]+)"/, html) ??
-        null,
-      thumbnail: oembed?.thumbnail_url ?? fromFeed?.thumbnail ?? null,
+      title: oembed?.title ?? meta?.title ?? "Untitled",
+      channel: oembed?.author_name ?? meta?.channel ?? "Unknown",
+      channelPath: channelUrl.replace(RUMBLE_ORIGIN, ""),
+      avatar: fromFeed?.avatar ?? null,
+      thumbnail: oembed?.thumbnail_url ?? meta?.thumbnail ?? fromFeed?.thumbnail ?? null,
       viewers: fromFeed?.viewers ?? null,
       viewersLabel: fromFeed?.viewersLabel ?? null,
-      live: live || Boolean(fromFeed?.live),
+      live: meta?.live ?? Boolean(fromFeed?.live),
       duration: null,
       embedId,
-      description:
-        decode(first(/<meta name="description" content="([^"]{0,600})"/i, html)).slice(0, 600) ||
-        null,
+      description: null,
       rumbleUrl,
     };
   });
