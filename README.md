@@ -16,31 +16,45 @@ npm run dev
 
 ## Where the data comes from
 
-Rumble has no open public browse API, so the data layer (`src/lib/rumble.ts`) uses the
-two surfaces that are reachable without credentials:
+Rumble has no open browse API, and **Cloudflare treats hosts differently**: it
+serves rumble.com's HTML to residential IPs but challenges datacenter IPs. That
+single fact shapes the whole data layer.
 
-| Source | Used for | Status |
-| --- | --- | --- |
-| `rumble.com/browse/live` | The live grid: title, channel, avatar, thumbnail, viewer count | Works — ~25 streams per load |
-| `rumble.com/api/Media/oembed.json` | Official oEmbed: title, author, thumbnail, embed iframe | Works — public, no auth |
-| `rumble.com/<slug>.html` | Resolving a video's embed id | Works |
-| `rumble.com/embed/<id>/` | Playback | Works — Rumble's sanctioned embed |
+| Endpoint | Used for | From home | From Vercel |
+| --- | --- | --- | --- |
+| `api/Media/oembed.json` | Title, author, thumbnail, embed id | 200 | **200** |
+| `rumble.com/embed/<id>/` | Live status, poster, player config JSON | 200 | **200** |
+| `rumble.com/browse/live` | The live directory | 200 | **403** |
+| `rumble.com/<slug>.html` | Video page | 200 | **403** |
+| `rumble.com/c/<ch>`, `/rss`, `embedJS` | Channel / feed discovery | mixed | **403** |
 
-Two things that **do not** work, and why the UI is shaped around them:
+So:
 
-- **Category pages** (`/browse/news`, `/browse/gaming`, …) now return `410 Gone`, and
-  `/search` sits behind a Cloudflare challenge. So there are no category rails and
-  search is a client-side filter over the live feed, plus paste-a-Rumble-link resolution.
-- **Viewer counts, descriptions and live chat on a video page** are rendered client-side,
-  so they aren't in the HTML. Viewer counts and avatars are borrowed from the live feed
-  instead; chat links out to Rumble.
+- **Stream pages work everywhere.** `getVideo` is oEmbed-first — oEmbed accepts a
+  video *page* URL and hands back the embed id inside its iframe markup, which
+  avoids the challenged page entirely. Live status comes from the embed page.
+- **Live discovery only works from a residential connection.** Nothing reachable
+  from a datacenter can enumerate what is live. In production the feed falls back
+  to `src/data/live-snapshot.json` and the UI says so rather than pretending.
 
-### One non-obvious gotcha
+Regenerate the snapshot from a home connection:
 
-Rumble answers some pages with a `307` that only resolves once you send back the cookie
-it just set. `fetch`'s automatic redirect handling loops until it throws
-`redirect count exceeded`. `get()` therefore follows redirects manually with a small
-per-host cookie jar.
+```bash
+node scripts/snapshot.mjs
+```
+
+Category pages (`/browse/news`) return `410` and `/search` is challenged even
+from home, so there are no category rails; search filters the feed and resolves
+pasted Rumble links.
+
+### Two non-obvious gotchas
+
+1. Rumble answers some pages with a `307` that only resolves once you send back
+   the cookie it just set. `fetch`'s automatic redirect handling loops until it
+   throws `redirect count exceeded`, so `get()` follows redirects manually with a
+   small per-host cookie jar.
+2. Viewer counts, descriptions and chat are client-rendered on video pages, so
+   they are absent from the HTML. Viewer counts come from the feed instead.
 
 ## What's real and what isn't
 
